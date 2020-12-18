@@ -11,34 +11,14 @@
 #include <termios.h>
 
 #define BUFFER_SIZE 1024
-#define PORT 22334 
-
-//隐藏终端输入的退格字符
-void hint_backspace()
-{
-    struct termios term;
-    memset(&term, 0, sizeof(term));
-
-    if (tcgetattr(STDIN_FILENO, &term) == -1)
-        perror("tcgetattr error");
-
-    term.c_cc[VERASE] = '\b';
-    if (tcsetattr(STDIN_FILENO, TCSANOW, &term) == -1)
-        perror("tcsetattr error");
-
-    return;
-}
+#define PORT 12345 
 
 int main(int argc, char* argv[])
 {
     int connfd;
-    char read_buf[BUFFER_SIZE];
-    char write_buf[BUFFER_SIZE];
-    char End_buf[BUFFER_SIZE] = "END\n";
-    memset(read_buf, 0, sizeof(read_buf));
-    memset(write_buf, 0, sizeof(write_buf));
-
-    hint_backspace();
+    char buf[BUFFER_SIZE];
+    char endBuf[BUFFER_SIZE] = "END\n";
+    memset(buf, 0, sizeof(buf));
 
     struct sockaddr_in6 srvaddr, peeraddr;
     socklen_t addr_len = sizeof(srvaddr);
@@ -49,17 +29,12 @@ int main(int argc, char* argv[])
 
     bzero(&peeraddr, sizeof(peeraddr));
     peeraddr.sin6_family = AF_INET6;
-    peeraddr.sin6_port = htons(PORT-1);
-    peeraddr.sin6_addr = in6addr_any;
-
+    peeraddr.sin6_port = htons(PORT);
+    inet_pton(AF_INET6, argv[1], &peeraddr.sin6_addr);
 
     if ((connfd = socket(AF_INET6, SOCK_DGRAM, 0)) < 0)
         perror("client socket error");
-
     bind(connfd, (struct sockaddr*)&srvaddr, sizeof(srvaddr));
-    printf("\033[1;35;35m****************************************\033[0m\n");
-    printf("\033[1;35;35m******已和对等方建立连接，开始通信******\033[0m\n");
-    printf("\033[1;35;35m****************************************\033[0m\n");
 
     struct pollfd fds[2];
     fds[0].fd = 0;
@@ -80,29 +55,23 @@ int main(int argc, char* argv[])
         }
 
         if (fds[0].revents & POLLIN) {  //向对等方发送数据
-            fgets(write_buf, BUFFER_SIZE-1, stdin);
-            ret = sendto(connfd, write_buf, BUFFER_SIZE-1, 0, (struct sockaddr*)&peeraddr, addr_len);
-            if (strcmp(write_buf, End_buf) == 0) {
-                printf("\033[1;35;35m****************************************\033[0m\n");
-                printf("\033[1;35;35m************你已经关闭了连接************\033[0m\n");
-                printf("\033[1;35;35m****************************************\033[0m\n");
+            fgets(buf, BUFFER_SIZE-1, stdin);
+            ret = sendto(connfd, buf, BUFFER_SIZE-1, 0, (struct sockaddr*)&peeraddr, addr_len);
+            if (strcmp(buf, endBuf) == 0) {
                 break;
             }
 
-            memset(write_buf, 0, sizeof(write_buf));
+            memset(buf, 0, sizeof(buf));
         }
 
         if (fds[1].revents & POLLIN) { //接收对等方数据
-            memset(read_buf, 0, sizeof(read_buf));
-            recvfrom(fds[1].fd, read_buf, BUFFER_SIZE-1, 0, NULL, NULL); 
-            if (strcmp(read_buf, End_buf) == 0) {
-                printf("\033[1;35;35m****************************************\033[0m\n");
-                printf("\033[1;35;35m************对等方关闭了连接************\033[0m\n");
-                printf("\033[1;35;35m****************************************\033[0m\n");
+            memset(buf, 0, sizeof(buf));
+            recvfrom(fds[1].fd, buf, BUFFER_SIZE-1, 0, NULL, NULL); 
+            if (strcmp(buf, endBuf) == 0) {
                 break;
             }
 
-            printf("对等方:%s", read_buf);
+            printf("peer:%s", buf);
         }
     }
 
